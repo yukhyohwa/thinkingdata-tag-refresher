@@ -40,7 +40,9 @@ os.makedirs(SESSION_DIR, exist_ok=True)
 
 def log(msg: str):
     ts = time.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{ts}] {msg}", flush=True)
+    # Encode safely for Windows GBK consoles
+    safe_msg = msg.encode("gbk", errors="replace").decode("gbk")
+    print(f"[{ts}] {safe_msg}", flush=True)
 
 
 def clear_session():
@@ -137,48 +139,82 @@ def perform_login(page):
 def click_refresh_button(page) -> bool:
     """
     Find and click the tag refresh button on the tag management page.
+
+    The TA tag page has a refresh icon (circular arrow) as the FIRST button
+    in the '操作 (Operations)' column of each tag row in the table.
+    The button class is: ant-btn ant-btn-default ant-btn-sm tant-next-button tant-next-button-only-icon
+
+    We click the refresh button for the FIRST tag row.
     Returns True on success, False if the button was not found.
-
-    The TA tag page shows a refresh icon (anticon-sync / anticon-reload)
-    or a button labelled 刷新 near the tag list header.
-    We try multiple selectors to be resilient against minor UI changes.
     """
-    log("Looking for the refresh button...")
+    log("Looking for the refresh button (first row of tag table)...")
 
-    # Selectors in order of specificity (most specific → most generic)
-    selectors = [
-        # Icon button inside the tag panel header area
-        '.ant-card-extra button[title*="刷新"]',
-        '.ant-card-extra button[title*="refresh"]',
-        '.ant-card-extra .anticon-sync',
-        '.ant-card-extra .anticon-reload',
-        # Generic fallback: any visible button/icon with these names
-        'button:has-text("刷新")',
-        'span:has-text("刷新")',
-        '.anticon-sync',
-        '.anticon-reload',
+    # Strategy 1: First icon-only action button in the table (most reliable)
+    # These are the small icon buttons in the 操作 column
+    icon_only_selectors = [
+        # Icon-only small buttons in the table
+        'td .tant-next-button-only-icon:first-child',
+        'td .ant-btn-sm.tant-next-button-only-icon',
+        '.ant-table-tbody tr:first-child td:last-child button:first-child',
+        '.ant-table-tbody tr:first-child .ant-btn:first-child',
+        # Any small icon button inside a table cell
+        'td.ant-table-cell button.ant-btn-sm',
     ]
 
-    for sel in selectors:
+    for sel in icon_only_selectors:
         try:
-            el = page.query_selector(sel)
-            if el and el.is_visible():
-                # Scroll into view and JS-click to bypass any overlay
-                page.evaluate("el => el.click()", el)
-                log(f"Clicked refresh button via selector: {sel}")
-                return True
-        except Exception:
+            els = page.query_selector_all(sel)
+            # Pick first visible one
+            for el in els:
+                if el and el.is_visible():
+                    cls = el.get_attribute("class") or ""
+                    log(f"Found candidate via '{sel}': class='{cls[:60]}'")
+                    page.evaluate("el => el.click()", el)
+                    log(f"Clicked refresh button via: {sel}")
+                    return True
+        except Exception as e:
+            log(f"Selector '{sel}' failed: {e}")
             continue
 
-    # Last resort: find by aria-label
+    # Strategy 2: All ant-btn-sm buttons — click the first visible one in a table row
     try:
-        el = page.get_by_role("button", name="刷新").first
-        if el.is_visible():
-            el.click()
-            log("Clicked refresh button via aria-label '刷新'.")
-            return True
-    except Exception:
-        pass
+        btn_sels = page.query_selector_all(
+            '.ant-table-tbody .ant-btn-sm, .ant-table-tbody .tant-next-button'
+        )
+        log(f"Found {len(btn_sels)} ant-btn-sm buttons in table.")
+        for btn in btn_sels:
+            if btn.is_visible():
+                cls = btn.get_attribute("class") or ""
+                log(f"Clicking first visible table button: class='{cls[:60]}'")
+                page.evaluate("el => el.click()", btn)
+                return True
+    except Exception as e:
+        log(f"Strategy 2 failed: {e}")
+
+    # Strategy 3: All anticon elements — pick the first visible one in the table
+    try:
+        icons = page.query_selector_all('.ant-table-tbody .anticon, .ant-table-tbody [role="img"]')
+        log(f"Found {len(icons)} anticons in table.")
+        for icon in icons:
+            if icon.is_visible():
+                cls = icon.get_attribute("class") or ""
+                log(f"Clicking first visible table anticon: class='{cls[:60]}'")
+                page.evaluate("el => el.click()", icon)
+                return True
+    except Exception as e:
+        log(f"Strategy 3 failed: {e}")
+
+    # Strategy 4: Global anticon-sync or anticon-reload
+    try:
+        for icon_cls in ['.anticon-sync', '.anticon-reload', '.anticon-redo']:
+            icons = page.query_selector_all(icon_cls)
+            for icon in icons:
+                if icon.is_visible():
+                    log(f"Clicking {icon_cls} icon.")
+                    page.evaluate("el => el.click()", icon)
+                    return True
+    except Exception as e:
+        log(f"Strategy 4 failed: {e}")
 
     return False
 
@@ -252,20 +288,25 @@ def run(headless: bool = True, force_login: bool = False):
         page.wait_for_timeout(1500)  # extra settling time for SPA rendering
 
         # ----------------------------------------------------------------
-        # Step 4: Click the refresh button
+        # Step 4: Always save screenshot first (helps diagnose issues)
+        # ----------------------------------------------------------------
+        screenshot_path = os.path.join(os.path.dirname(__file__), "debug_screenshot.png")
+        try:
+            page.screenshot(path=screenshot_path, full_page=True)
+            log(f"Screenshot saved: {screenshot_path}")
+        except Exception as e:
+            log(f"Screenshot failed: {e}")
+
+        # ----------------------------------------------------------------
+        # Step 5: Click the refresh button
         # ----------------------------------------------------------------
         success = click_refresh_button(page)
 
         if success:
-            log("✅ Refresh button clicked successfully!")
+            log("[OK] Refresh button clicked successfully!")
             page.wait_for_timeout(3000)  # let the refresh request fire
         else:
-            log("❌ Refresh button NOT found. Saving screenshot for debugging...")
-            screenshot_path = os.path.join(
-                os.path.dirname(__file__), "debug_screenshot.png"
-            )
-            page.screenshot(path=screenshot_path, full_page=True)
-            log(f"Screenshot saved: {screenshot_path}")
+            log("[FAIL] Refresh button NOT found. Check debug_screenshot.png for the current page state.")
             context.close()
             sys.exit(2)
 
