@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Playwright browsers (managed by playwright install)
+.playwright/
+
+# Environment variables (contains credentials)
+.env
+
+# Browser session (contains login cookies — do not commit)
+ta_session/
+
+# Debug artifacts
+debug_screenshot.png
+*.png
+
+# Editor
+.vscode/
+.idea/
+*.swp
