@@ -16,9 +16,9 @@ playwright install chromium
 echo [3/3] Setup complete!
 echo.
 echo To test the script, run:
-echo   venv\Scripts\python.exe refresh_tag.py --show
+echo   venv\Scripts\python.exe main.py --show
 echo.
 echo To force a fresh login (clears saved session):
-echo   venv\Scripts\python.exe refresh_tag.py --login --show
+echo   venv\Scripts\python.exe main.py --login --show
 echo.
 pause

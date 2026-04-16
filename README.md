@@ -1,4 +1,4 @@
-# fivecross-ta-tag-refresher
+# thinkingdata-tag-refresher
 
 Automatically navigates to the ThinkingData tag management page, logs in if needed (using a persistent browser session), and clicks the **刷新 (Refresh)** button.
 

@@ -19,8 +19,8 @@ env/
 # Browser session (contains login cookies — do not commit)
 ta_session/
 
-# Debug artifacts
-debug_screenshot.png
+# Debug artifacts & logs
+logs/
 *.png
 
 # Editor
