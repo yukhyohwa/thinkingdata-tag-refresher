@@ -13,7 +13,11 @@ if exist "venv\Scripts\python.exe" (
 
 %PYTHON_EXE% main.py
 
-echo Exit code: %ERRORLEVEL%
+set RETURN_CODE=%ERRORLEVEL%
+echo Task finished with exit code: %RETURN_CODE%
 
-:: Uncomment to pause when double-clicking (not needed in Task Scheduler)
-pause
+:: If you want to keep the window open for manual runs, you can use:
+:: if "%1" neq "nopause" pause
+:: But for scheduled tasks, we should just exit.
+
+exit /b %RETURN_CODE%
