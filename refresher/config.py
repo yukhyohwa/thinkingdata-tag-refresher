@@ -8,10 +8,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-TA_URL      = os.getenv("TA_URL",  "http://8.211.141.76:8993/")
+TA_URL      = os.getenv("TA_URL",  "https://ss-web.5xgames.com/")
 TA_USER     = os.getenv("TA_USER", "")
 TA_PASS     = os.getenv("TA_PASS", "")
-TAG_URL     = os.getenv("TAG_URL", "http://8.211.141.76:8993/#/tag/tag/1?currentProjectId=13")
+TAG_URL     = os.getenv("TAG_URL", "https://ss-web.5xgames.com/#/tag/tag/1?currentProjectId=13")
 SESSION_DIR = os.path.abspath(os.getenv("SESSION_DIR", "./ta_session"))
 
 # Tags to refresh, in order
@@ -19,6 +19,7 @@ TAGS_TO_REFRESH = [
     "fixed_os",
     "fixed_country",
     "fixed_regdate",
+    "fixed_serverid",
 ]
 
 # Milliseconds to wait after each successful refresh before moving to the next tag
