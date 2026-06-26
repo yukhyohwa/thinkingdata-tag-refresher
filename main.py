@@ -16,13 +16,15 @@ import sys
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 from refresher.config import (
-    TAG_URL, TAGS_TO_REFRESH, WAIT_AFTER_REFRESH_MS, log
+    TAG_URL, TAGS_TO_REFRESH, WAIT_AFTER_REFRESH_MS, log,
+    GROUP_URL, GROUPS_TO_REFRESH, WAIT_BETWEEN_PHASES_MIN
 )
 from refresher.browser import (
     clear_session, launch_context, ensure_logged_in
 )
 from refresher.tag_actions import (
-    resolve_tag_indices, dismiss_open_modal, refresh_tag
+    resolve_tag_indices, dismiss_open_modal, refresh_tag,
+    resolve_group_indices, refresh_group
 )
 
 
@@ -113,20 +115,107 @@ def run(headless: bool = True, force_login: bool = False) -> None:
 
             log("-" * 50)
 
-        # ── 6. Summary ───────────────────────────────────────────────────
+        # ── 6. Transition Delay ────────────────────────────────────────
+        if WAIT_BETWEEN_PHASES_MIN > 0:
+            log(f"Waiting {WAIT_BETWEEN_PHASES_MIN} minutes between Tag and Group refresh stages...")
+            page.wait_for_timeout(WAIT_BETWEEN_PHASES_MIN * 60 * 1000)
+
+        # ── 7. Navigate to Group Page ──────────────────────────────────
+        log(f"Navigating to: {GROUP_URL}")
+        page.goto(GROUP_URL)
+        try:
+            page.wait_for_load_state("networkidle", timeout=15000)
+        except PlaywrightTimeout:
+            pass
+
+        log("Waiting for group table to load...")
+        try:
+            page.wait_for_selector(
+                ".art-table-row, .art-table, [class*='tableRow'], [class*='art-table']",
+                timeout=25000,
+            )
+            log("Group table loaded.")
+        except PlaywrightTimeout:
+            log("WARNING: Group table not found within timeout; proceeding anyway.")
+        page.wait_for_timeout(2000)
+
+        # ── 8. Resolve group indices ───────────────────────────────────────
+        group_indices = resolve_group_indices(page, GROUPS_TO_REFRESH)
+
+        log("-" * 50)
+        log(f"Will refresh {len(GROUPS_TO_REFRESH)} groups in order:")
+        for i, name in enumerate(GROUPS_TO_REFRESH, 1):
+            log(f"  {i}. {name}")
+        log("-" * 50)
+
+        # ── 9. Refresh each group ──────────────────────────────────────────
+        group_results: dict[str, bool] = {}
+        for i, group_name in enumerate(GROUPS_TO_REFRESH, 1):
+            dismiss_open_modal(page)
+            page.wait_for_timeout(400)
+
+            log(f"[{i}/{len(GROUPS_TO_REFRESH)}] Refreshing group: {group_name}")
+
+            idx = group_indices.get(group_name, -1)
+            if idx < 0:
+                log(f"  [FAIL] Group '{group_name}' not found in index map.")
+                group_results[group_name] = False
+                log("-" * 50)
+                continue
+
+            ok = False
+            for attempt in range(2):
+                if attempt > 0:
+                    log(f"  Attempt {attempt + 1}: Reloading group page...")
+                    page.goto(GROUP_URL)
+                    try:
+                        page.wait_for_load_state("networkidle", timeout=15000)
+                        page.wait_for_selector(".art-table-row", timeout=20000)
+                        page.wait_for_timeout(1000)
+                    except Exception:
+                        pass
+
+                ok = refresh_group(page, group_name, idx)
+                if ok:
+                    break
+                log(f"  Group refresh failed (attempt {attempt + 1}).")
+
+            group_results[group_name] = ok
+            log(f"  -> {'OK' if ok else 'FAILED'}")
+
+            if ok:
+                page.wait_for_timeout(WAIT_AFTER_REFRESH_MS)
+                try:
+                    page.wait_for_selector(
+                        '.art-table-row, tr', timeout=8000
+                    )
+                    page.wait_for_timeout(500)
+                except Exception:
+                    pass
+
+            log("-" * 50)
+
+        # ── 10. Summary ───────────────────────────────────────────────────
         log("=== Refresh Summary ===")
-        failed = [name for name, ok in results.items() if not ok]
+        log("Tags:")
+        failed_tags = [name for name, ok in results.items() if not ok]
         for tag_name, ok in results.items():
             log(f"  {'[OK]  ' if ok else '[FAIL]'} {tag_name}")
 
+        log("Groups:")
+        failed_groups = [name for name, ok in group_results.items() if not ok]
+        for group_name, ok in group_results.items():
+            log(f"  {'[OK]  ' if ok else '[FAIL]'} {group_name}")
+
         context.close()
 
-        if failed:
-            log(f"WARNING: {len(failed)} tag(s) failed: {', '.join(failed)}")
+        all_failed = failed_tags + failed_groups
+        if all_failed:
+            log(f"WARNING: {len(all_failed)} item(s) failed to refresh: {', '.join(all_failed)}")
             log("TIP: Run with --show to debug visually.")
             sys.exit(2)
         else:
-            log("All tags refreshed successfully!")
+            log("All tags and groups refreshed successfully!")
             log("Done. Browser closed.")
 
 

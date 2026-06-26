@@ -245,3 +245,83 @@ def refresh_tag(page: Page, tag_name: str, row_index: int) -> bool:
         return False
 
     return _confirm_dialog(page, tag_name)
+
+
+def resolve_group_indices(page: Page, groups: list[str]) -> dict[str, int]:
+    """
+    Find row index for each group name in the table.
+    """
+    log("Resolving group row indices...")
+    group_indices: dict[str, int] = {}
+    try:
+        # Build map via exact name matching in DOM rows
+        for group in groups:
+            idx = page.evaluate('''
+                (groupName) => {
+                    const rows = Array.from(document.querySelectorAll('.art-table-row, tr'));
+                    for (let i = 0; i < rows.length; i++) {
+                        const row = rows[i];
+                        const links = Array.from(row.querySelectorAll('a, span'));
+                        const matched = links.some(el => {
+                            const txt = (el.innerText || el.textContent || '').trim();
+                            return txt === groupName;
+                        });
+                        if (matched) return i;
+                    }
+                    return -1;
+                }
+            ''', group)
+            if idx >= 0:
+                group_indices[group] = idx
+                log(f"  {group} -> row {idx}")
+            else:
+                log(f"  {group} -> NOT FOUND")
+    except Exception as e:
+        log(f"  Error resolving group indices: {e}")
+    return group_indices
+
+
+def refresh_group(page: Page, group_name: str, row_index: int) -> bool:
+    """
+    Hover over the target row, click the first action button (refresh), and confirm dialog.
+    """
+    log(f"  Refreshing group: {group_name} at row {row_index}")
+    try:
+        rows = page.query_selector_all(".art-table-row, tr")
+        if row_index < len(rows):
+            rows[row_index].hover()
+            page.wait_for_timeout(800)
+            log(f"  Hovered over row {row_index}")
+        else:
+            log(f"  WARNING: row_index {row_index} out of range ({len(rows)} rows)")
+    except Exception as e:
+        log(f"  Hover error: {e}")
+
+    clicked = False
+    try:
+        result = page.evaluate('''
+            (idx) => {
+                const rows = document.querySelectorAll('.art-table-row, tr');
+                if (idx >= rows.length || idx < 0) return false;
+                const row = rows[idx];
+                const buttons = Array.from(row.querySelectorAll('button'));
+                const opButtons = buttons.filter(b => b.classList.contains('tant-next-button-only-icon') || b.classList.contains('ant-btn'));
+                if (opButtons.length > 0) {
+                    opButtons[0].click();
+                    return true;
+                }
+                return false;
+            }
+        ''', row_index)
+        if result:
+            clicked = True
+            log("  JS click on group refresh button succeeded.")
+        else:
+            log("  Group refresh button not found in operations.")
+    except Exception as e:
+        log(f"  Click error: {e}")
+
+    if not clicked:
+        return False
+
+    return _confirm_dialog(page, group_name)
