@@ -22,6 +22,8 @@ TAGS_TO_REFRESH = [
     "fixed_os",
     "fixed_affcode",
     "fixed_regdate",
+    "fixed_ip",
+    "fixed_zone",
 ]
 
 # Groups to refresh, in order
