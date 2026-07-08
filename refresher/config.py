@@ -29,6 +29,7 @@ TAGS_TO_REFRESH = [
 # Groups to refresh, in order
 GROUPS_TO_REFRESH = [
     "is_water",
+    "is_water_mod",
 ]
 
 # Milliseconds to wait after each successful refresh before moving to the next tag
