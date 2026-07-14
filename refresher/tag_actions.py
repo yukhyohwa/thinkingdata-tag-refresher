@@ -304,9 +304,31 @@ def refresh_group(page: Page, group_name: str, row_index: int) -> bool:
                 const rows = document.querySelectorAll('.art-table-row, tr');
                 if (idx >= rows.length || idx < 0) return false;
                 const row = rows[idx];
-                const buttons = Array.from(row.querySelectorAll('button'));
+                
+                // 操作栏在最右侧（最后一个单元格）
+                const cells = Array.from(row.children);
+                if (cells.length === 0) return false;
+                const lastCell = cells[cells.length - 1];
+                
+                const buttons = Array.from(lastCell.querySelectorAll('button'));
                 const opButtons = buttons.filter(b => b.classList.contains('tant-next-button-only-icon') || b.classList.contains('ant-btn'));
-                if (opButtons.length > 0) {
+                
+                // 优先查找包含“更新”、“刷新”、“计算”或“refresh”标识的按钮
+                const refreshBtn = opButtons.find(b => {
+                    const html = b.outerHTML.toLowerCase();
+                    return html.includes('refresh') || html.includes('更新') || html.includes('刷新') || html.includes('计算');
+                });
+                
+                if (refreshBtn) {
+                    refreshBtn.click();
+                    return true;
+                }
+                
+                // 如果没找到明显标识，通常第二按钮是计算/刷新，第一按钮是编辑
+                if (opButtons.length > 1) {
+                    opButtons[1].click();
+                    return true;
+                } else if (opButtons.length > 0) {
                     opButtons[0].click();
                     return true;
                 }
